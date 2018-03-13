@@ -8,7 +8,6 @@ RocketChat.integrations.triggerHandler = new class RocketChatIntegrationHandler 
 	constructor() {
 		this.vm = vm;
 		this.successResults = [200, 201, 202];
-		this.compiledScripts = {};
 		this.triggers = {};
 
 		RocketChat.models.Integrations.find({type: 'webhook-outgoing'}).observe({
@@ -226,11 +225,6 @@ RocketChat.integrations.triggerHandler = new class RocketChatIntegrationHandler 
 	}
 
 	getIntegrationScript(integration) {
-		const compiledScript = this.compiledScripts[integration._id];
-		if (compiledScript && +compiledScript._updatedAt === +integration._updatedAt) {
-			return compiledScript.script;
-		}
-
 		const script = integration.scriptCompiled;
 		const { store, sandbox } = this.buildSandbox();
 
@@ -244,13 +238,10 @@ RocketChat.integrations.triggerHandler = new class RocketChatIntegrationHandler 
 			vmScript.runInNewContext(sandbox);
 
 			if (sandbox.Script) {
-				this.compiledScripts[integration._id] = {
+				return {
 					script: new sandbox.Script(),
-					store,
-					_updatedAt: integration._updatedAt
+					store
 				};
-
-				return this.compiledScripts[integration._id].script;
 			}
 		} catch (e) {
 			logger.outgoing.error(`Error evaluating Script in Trigger ${ integration.name }:`);
@@ -271,33 +262,28 @@ RocketChat.integrations.triggerHandler = new class RocketChatIntegrationHandler 
 			return false;
 		}
 
-		let script;
-		try {
-			script = this.getIntegrationScript(integration);
-		} catch (e) {
-			return false;
-		}
-
-		return typeof script[method] !== 'undefined';
+		return true;
 	}
 
-	executeScript(integration, method, params, historyId) {
+	executeScript(integration, method, params, historyId, defaultResult) {
 		let script;
+		let store;
+
 		try {
-			script = this.getIntegrationScript(integration);
+			const scriptData = this.getIntegrationScript(integration);
+			script = scriptData.script;
+			store = scriptData.store;
 		} catch (e) {
 			this.updateHistory({ historyId, step: 'execute-script-getting-script', error: true, errorStack: e });
 			return;
 		}
 
 		if (!script[method]) {
-			logger.outgoing.error(`Method "${ method }" no found in the Integration "${ integration.name }"`);
-			this.updateHistory({ historyId, step: `execute-script-no-method-${ method }` });
-			return;
+			return defaultResult;
 		}
 
 		try {
-			const { sandbox } = this.buildSandbox(this.compiledScripts[integration._id].store);
+			const { sandbox } = this.buildSandbox(store);
 			sandbox.script = script;
 			sandbox.method = method;
 			sandbox.params = params;
@@ -630,7 +616,7 @@ RocketChat.integrations.triggerHandler = new class RocketChatIntegrationHandler 
 		};
 
 		if (this.hasScriptAndMethod(trigger, 'prepare_outgoing_request')) {
-			opts = this.executeScript(trigger, 'prepare_outgoing_request', { request: opts }, historyId);
+			opts = this.executeScript(trigger, 'prepare_outgoing_request', { request: opts }, historyId, opts);
 		}
 
 		this.updateHistory({ historyId, step: 'after-maybe-ran-prepare', ranPrepareScript: true });

@@ -200,6 +200,7 @@ function executeIntegrationRest() {
 			url_params: this.urlParams,
 			content: this.bodyParams,
 			content_raw,
+			body: this.request.body,
 			headers: this.request.headers,
 			user: {
 				_id: this.user._id,

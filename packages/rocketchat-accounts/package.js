@@ -8,12 +8,14 @@ Package.describe({
 Package.onUse(function(api) {
 	api.use([
 		'underscore',
-		'ecmascript'
+		'ecmascript',
+		'accounts-oauth'
 	]);
 
 	api.use('mongo', ['client', 'server']);
 
 	api.mainModule('server/index.js', 'server');
+	api.mainModule('client/oauth.js', 'client');
 });
 
 Npm.depends({
